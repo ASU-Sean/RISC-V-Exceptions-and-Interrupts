@@ -50,45 +50,93 @@
 \newpage
 
 \section{Privilege Modes and Control Status Registers}
-RISC-V supports three different privilege modes: M-mode (highest priority), S-mode, and U-mode (lowest priority). Currently, hypervisor-mode (H-mode) is reserved and is not a formal part of the RISC-V ISA. RISC-V also supports an optional debug mode (D-mode) for off-chip debugging that can be considered to be an additional privilege mode with more access than M-mode. Code run in machine-mode (M-mode) is usually inherently trusted, as it has low-level access to the machine implementation. M-mode can be used to manage secure execution environments on RISC-V. User-mode (U-mode) and supervisor-mode (S-mode) are intended for conventional application and operating system usage respectively. Privilege-level actions like exception and interrupt handling rely on a set of control and status registers (CSRs). Each privilege mode supports a set of privilege-specific CSRs for the privilege-specific trap handlers. In this document, CSRs or fields in CSRs prefixed with an \emph{x} refer to the possibility that CSRs can have three privilege-specific implementations: M-mode (x = m), S-mode (x = s), and U-mode (x = u). These privilege-specific CSRs are controlled by their respective privilege-specific trap handlers. 
+RISC-V supports three different privilege modes: M-mode (highest priority), S-mode, and U-mode (lowest priority). Currently, hypervisor-mode (H-mode) is reserved and is not a formal part of the RISC-V ISA. RISC-V also supports an optional debug mode (D-mode) for off-chip debugging that can be considered to be an additional privilege mode with more access than M-mode. Code run in machine-mode (M-mode) is usually inherently trusted, as it has low-level access to the machine implementation. M-mode can be used to manage secure execution environments on RISC-V. User-mode (U-mode) and supervisor-mode (S-mode) are intended for conventional application and operating system usage respectively. Privilege-level actions like exception and interrupt handling rely on a set of control and status registers (CSRs). Each privilege mode supports a set of privilege-specific CSRs for the privilege-specific trap handlers. In this document, CSRs or fields in CSRs prefixed with an \emph{x} refer to the possibility that CSRs can have three privilege-specific implementations: M-mode (x = m), S-mode (x = s), and U-mode (x = u). These privilege-specific CSRs are controlled by their respective privilege-specific trap handlers.
 
 \section{Exceptions and Interrupts}
-RISC-V defines exceptions as an unusual condition occurring at run time associated with an instruction in the current hart. Exceptions can be organized into six different categories: fetch, load, store, misaligned jump/branch (i.e misaligned instruction address), illegal instruction, and ECALL/EBREAK. Interrupts refer to an external, asynchronous event that may cause the RISC-V hart to experience an unexpected transfer of control. Interrupts are organized into three different categories: external, software, and timer. External interrupts are raised by devices connected to the processor, software interrupts are raised by programs, and timer interrupts are raised when the value in the {\tt{xtime}} CSR is greater than or equal the value in the {\tt{xtimecmp}} CSR. For multi-hart systems, interrupts also rely on an inter-processor interface (see Section 6) to handle interrupts between multiple harts.
+RISC-V defines exceptions as an unusual condition occurring at run time associated with an instruction in the current hart. Exceptions can be organized into six different categories: fetch, load, store, misaligned jump/branch (i.e misaligned instruction address), illegal instruction, and ECALL/EBREAK. Interrupts refer to an external, asynchronous event that may cause the RISC-V hart to experience an unexpected transfer of control. RISC-V processors must handle each of these exception meaning select exceptions cannot be disabled. Interrupts are organized into three different categories: external, software, and timer. External interrupts are raised by devices connected to the processor, software interrupts are raised by programs, and timer interrupts are raised when the value in the {\tt{xtime}} CSR is greater than or equal the value in the {\tt{xtimecmp}} CSR. For multi-hart systems, interrupts also rely on an inter-processor interface (see Section 6) to handle interrupts between multiple harts. RISC-V processors have the option of handling certain interrupts meaning select interrupts can be enabled or disabled (see Section 6.2). 
 
-\begin{section}{Exception Handling}
+\section{Exception Handling}
 \subsection{M-Mode Exceptions}
-If an exception occurs, control is relinquished by the program that is currently being executed and transferred to the trap handler. The trap handler can be thought of as a software function call the program executes in response to an erroneous hardware event. During this function call the program jumps to an address and writes to a set of CSRs before resuming the program at the location that raised the exception. Before an exception can be raised and handled, the trap handler must be initialized. By default, M-mode, S-mode, and U-mode exceptions are handled by the M-mode trap handler. Software initializes the M-mode trap handler by setting the {\tt{mtvec}} CSR (see Figure \ref{mtvecreg} in the Appendix). The {\tt{mtvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. For both modes, the program counter is set to the base address in {\tt{mtvec}}. This is the address where the M-mode trap handler is located.
+If an exception occurs, control is relinquished by the program that is currently being executed and transferred to the exception handler. The exception handler can be thought of as a software function call the program executes in response to an erroneous hardware event. During this function call the program jumps to an address and writes to a set of CSRs before resuming the program at the location that raised the exception. Before an exception can be raised and handled, the exception handler must be initialized. By default, M-mode, S-mode, and U-mode exceptions are handled by the M-mode exception handler. Software initializes the M-mode exception handler by setting the {\tt{mtvec}} CSR (see Figure \ref{mtvecreg} in the Appendix). The {\tt{mtvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. For both modes, the program counter is set to the base address in {\tt{mtvec}}. This is where the M-mode exception handler is located.
 
-Once the program jumps to the M-mode trap handler, the {\tt{mepc}}, {\tt{mstatus}}, {\tt{mtval}}, and {\tt{mcause}} CSRs are set before the program exits the trap handler and resumes execution at the instruction that raised the exception. The {\tt{mepc}} CSR (see Figure \ref{mepcreg} in the Appendix) is written with the virtual address of the instruction that took the trap. This address is stored so that the program can be returned to and resumed after the trap handler is finished. In M-mode, the two-bit MPP field in {\tt{mstatus}} (see Figure \ref{mstatusreg-rv32} in the Appendix) is written with the privilege level encoding corresponds to the privilege level the program was in when the exception was raised. MPP can hold three values: 11 (M-mode), 01 (S-mode), and 00 (U-mode). In addition so setting MPP, the 1-bit MPIE field is set the the value in the 1-bit MIE field before the MIE field is set to zero. These fields in {\tt{mstatus}} do not effect exception handling and are only changed so that trap handler does not process more than one interrupt at a time. The {\tt{mtval}} CSR (see Figure \ref{mtvalreg} in the Appendix) is written with exception-specific information. For EBREAKs, misaligned addresses, access faults, and page faults, {\tt{mtval}} will contain the faulting virtual address. When page-based virtual memory is enabled, {\tt{mtval}} is written with the faulting virtual address, even for physical-memory access exceptions. For illegal instructions, {\tt{mtval}} contains the faulting instruction bits of the illegal instruction i.e the faulting instruction. The {\tt{mcause}} CSR (see Figure \ref{mcausereg} in the Appendix) is written with the exception cause code that corresponds to the exception that was raised. If an instruction raises multiple synchronous exceptions, the exceptions are taken by the trap handler and reported in {\tt{mcause}} according to a pre-defined priority structure. After these CSRs are set, the trap handler executes an MRET instruction to jump back to the address stored in {\tt{mepc}} so that the program can resume. During this time, MRET also sets MIE to the value in MPIE before setting MPIE to one to indicate that the trap handler is ready for the next interrupt. 
+On entry to the M-mode exception handler, the current execution environment is interrupted and software sets the {\tt{mepc}}, {\tt{mstatus}}, {\tt{mcause}}, and {\tt{mtval}} CSRs before resuming execution at the instruction that raised the exception. The {\tt{mepc}} CSR (see Figure \ref{mepcreg} in the Appendix) is written with the value the program counter was set to for the instruction that took the exception. This value is stored so that the previous execution environment can be returned to and resumed once the exception handler is finished. In M-mode, software changes the MPP, MPIE and MIE fields (see Section 6.2 for more information) in the {\tt{mstatus}} CSR (see Figure \ref{mstatusreg-rv32} in the Appendix). {\tt{mstatus.MPP}} is a 2-bit field that is written with the privilege level encoding that corresponds to the privilege level the program was in when the exception was raised. {\tt{mstatus.MPP}} can hold three values: 11 (M-mode), 01 (S-mode), and 00 (U-mode). {\tt{mstatus.MPIE}} is a 1-bit field that is written with the value the 1-bit, M-mode global interrupt-enable field {\tt{mstatus.MIE}} held when the exception was raised. Once {\tt{mstatus.MPIE}} is written with the value in {\tt{mstatus.MIE}}, the {\tt{mstatus.MIE}} field is set to zero so that the exception handler does not attempt to process an interrupt while the current trap is being handled. The {\tt{mcause}} CSR (see Figure \ref{mcausereg} in the Appendix) is written with the exception cause code that corresponds to the exception that was raised. If an instruction raises multiple synchronous exceptions, the exceptions are taken by the exception handler and reported in {\tt{mcause}} according to a pre-defined priority structure. The {\tt{mtval}} CSR (see Figure \ref{mtvalreg} in the Appendix) is written with exception-specific information. For misaligned addresses, access faults, and page faults, {\tt{mtval}} will contain the faulting virtual address (see Section 4 for more information). Conversely, illegal instructions set {\tt{mtval}} to the faulting instruction whereas EBREAKs and ECALLs set {\tt{mtval}} to zero. If software intends to exit the M-mode exception handler and return to the location that raised the exception after these CSRs are set, it must first determine whether any register states were corrupted during the service routine and resolve these critical errors. Once this is done, software may execute a MRET instruction which sets the program counter to the value stored in {\tt{mepc}} and resumes the previous execution environment. In addition to setting the program counter, MRET also sets {\tt{mstatus.MIE}} to the value in {\tt{mstatus.MPIE}} before setting {\tt{mstatus.MPIE}} to one to indicate that the exception handler is ready for the next interrupt. 
 
 \subsection{S-Mode Exceptions}
-Exceptions raised in S-mode can be handled in M-mode or delegated to S-mode through the {\tt{medeleg}} CSR (see Figure \ref{medelegreg} in the Appendix). Delegating to S-mode means that only S-mode CSRs are visible in hardware and exceptions are processed by the S-mode trap handler. The {\tt{medeleg}} CSR delegates exceptions by raising the bits in positions that correspond to exception code numbers. This delegation process can be expressed by a single line of Verilog code as shown below.  
+Exceptions raised in S-mode can be handled in M-mode or delegated to S-mode through the {\tt{medeleg}} CSR (see Figure \ref{medelegreg} in the Appendix). Delegating to S-mode means that only S-mode CSRs are visible to software and exceptions are processed by the S-mode exception handler. The {\tt{medeleg}} CSR delegates exceptions by raising the bits in positions that correspond to exception code numbers as shown in Figure \ref{medelegcode}. 
 
-\begin{lstlisting}[language=Verilog]
-assign dCSR_medeleg = 32'b1 << exception_cause_code; // Set medeleg
-\end{lstlisting}
+\begin{figure}[h!]
+{\footnotesize
+\begin{center}
+\begin{tabular}{MM}
+\instbitrange{MXLEN-1}{16} &
+\instbitrange{15}{0} \\
+\hline
+\multicolumn{1}{|c|}{\warl} &
+\multicolumn{1}{c|}{Code 15 - Code 0} \\
+\hline
+MXLEN-16 & 16 \\
+\end{tabular}
+\end{center}
+}
+\vspace{-0.1in}
+\caption{Machine Exception Delegation Register {\tt medeleg}.}
+\label{medelegcode}
+\end{figure}
 
-Software initializes the S-mode trap handler by setting the {\tt{stvec}} CSR (see Figure \ref{stvecreg} in the Appendix). The {\tt{stvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. For both modes, the program counter is set to the base address in {\tt{stvec}}. This is the address where the S-mode trap handler is located. 
+Software initializes the S-mode exception handler by setting the {\tt{stvec}} CSR (see Figure \ref{stvecreg} in the Appendix). The {\tt{stvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. For both modes, the program counter is set to the base address in {\tt{stvec}}. This is where the S-mode exception handler is located. 
 
-Once the program jumps to the S-mode trap handler, the {\tt{sepc}}, {\tt{mstatus}}, {\tt{stval}}, and {\tt{scause}} CSRs are set before the program exits the trap handler and resumes execution at the instruction that raised the exception. The {\tt{sepc}} CSR (see Figure \ref{sepcreg} in the Appendix) is written with the virtual address of the instruction that took the trap. This address is stored so that the program can be returned to and resumed after the trap handler is finished. In S-mode, the two-bit SPP field in {\tt{mstatus}}\footnote[1]{S-mode and U-mode can utilize {\tt{mstatus}} instead of {\tt{sstatus}} and {\tt{ustatus}}. These CSRs simply restrict the higher privilege level fields from being visible to hardware.} is written with the privilege level encoding corresponds to the privilege level the program was in when the exception was raised. SPP can hold two values: 1 (S-mode) or 0 (U-mode). In addition to setting SPP, the 1-bit SPIE field is set the the value in the 1-bit SIE field before the SIE field is set to zero. These fields in {\tt{mstatus}} do not effect exception handling and are only changed so that trap handler does not process more than one interrupt at a time. The {\tt{stval}} CSR (see Figure \ref{stvalreg} in the Appendix) is written with exception-specific information. For EBREAKs, misaligned addresses, access faults, and page faults, {\tt{stval}} will contain the faulting virtual address. When page-based virtual memory is enabled, {\tt{stval}} is written with the faulting virtual address, even for physical-memory access exceptions. For illegal instructions, {\tt{stval}} contains the faulting instruction bits of the illegal instruction i.e the faulting instruction. The {\tt{scause}} CSR (see Figure \ref{scausereg} in the Appendix) is written with the exception cause code that corresponds to the exception that was raised. If an instruction raises multiple synchronous exceptions, the exceptions are taken by the trap handler and reported in {\tt{scause}} according to a pre-defined priority structure. After these CSRs are set, the trap handler executes an SRET instruction to jump back to the address stored in {\tt{sepc}} so that the program can resume. During this time, SRET also sets SIE to the value in SPIE before setting SPIE to one to indicate that the trap handler is ready for the next interrupt.
+On entry to the S-mode exception handler, the current execution environment is interrupted and software sets the {\tt{sepc}}, {\tt{mstatus}}, {\tt{scause}}, and {\tt{stval}} CSRs before resuming execution at the instruction that raised the exception. The {\tt{sepc}} CSR (see Figure \ref{sepcreg} in the Appendix) is written with the value the program counter was set to for the instruction that took the exception. This value is stored so that the previous execution environment can be returned to and resumed once the exception handler is finished. In S-mode, software changes the SPP, SPIE and SIE fields (see Section 6.2 for more information) in the {\tt{mstatus}}\footnote[1]{S-mode and U-mode can utilize {\tt{mstatus}} instead of {\tt{sstatus}} and {\tt{ustatus}}. These CSRs simply restrict the higher privilege level fields from being visible to hardware.} CSR. {\tt{mstatus.SPP}} is a 1-bit field that is written with the privilege level encoding that corresponds to the privilege level the program was in when the exception was raised. {\tt{mstatus.SPP}} can hold two values: 1 (S-mode) and 0 (U-mode). {\tt{mstatus.SPIE}} is a 1-bit field that is written with the value the 1-bit, S-mode global interrupt-enable field {\tt{mstatus.SIE}} held when the exception was raised. Once {\tt{mstatus.SPIE}} is written with the value in {\tt{mstatus.SIE}}, the {\tt{mstatus.SIE}} field is set to zero so that the exception handler does not attempt to process an interrupt while the current trap is being handled. The {\tt{scause}} CSR (see Figure \ref{scausereg} in the Appendix) is written with the exception cause code that corresponds to the exception that was raised. If an instruction raises multiple synchronous exceptions, the exceptions are taken by the exception handler and reported in {\tt{scause}} according to a pre-defined priority structure. The {\tt{stval}} CSR (see Figure \ref{stvalreg} in the Appendix) is written with exception-specific information. For misaligned addresses, access faults, and page faults, {\tt{stval}} will contain the faulting virtual address (see Section 4 for more information). Conversely, illegal instructions set {\tt{stval}} to the faulting instruction whereas EBREAKs and ECALLs set {\tt{stval}} to zero. If software intends to exit the S-mode exception handler and return to the location that raised the exception after these CSRs are set, it must first determine whether any register states were corrupted during the service routine and resolve these critical errors. Once this is done, software may execute a SRET instruction which sets the program counter to the value stored in {\tt{sepc}} and resumes the previous execution environment. In addition to setting the program counter, SRET also sets {\tt{mstatus.SIE}} to the value in {\tt{mstatus.SPIE}} before setting {\tt{mstatus.SPIE}} to one to indicate that the exception handler is ready for the next interrupt. 
 
 \subsection{U-Mode Exceptions}
-Exceptions raised in U-mode can be handled in M-mode, delegated to S-mode through the {\tt{medeleg}} CSR, or delegated to U-mode through the {\tt{sedeleg}} CSR (see Figure \ref{sedelegreg} in the Appendix). Delegating to U-mode means that only U-mode CSRs are visible in hardware and exceptions are processed by the U-mode trap handler as shown in Figure \ref{delegation}. The {\tt{sedeleg}} CSR delegates exceptions that first must be delegated by the {\tt{medeleg}} CSR by raising the bits in positions that correspond to exception code numbers. This delegation process can be expressed by two lines of Verilog code as shown below.
+Exceptions raised in U-mode can be handled in M-mode, delegated to S-mode through the {\tt{medeleg}} CSR, or delegated to U-mode through the {\tt{sedeleg}} CSR (see Figure \ref{sedelegreg} in the Appendix). Delegating to U-mode means that only U-mode CSRs are visible to software and exceptions are processed by the U-mode exception handler as shown in Figure \ref{delegation}. The {\tt{sedeleg}} CSR delegates exceptions that first must be delegated by the {\tt{medeleg}} CSR by raising the bits in positions that correspond to exception code numbers as shown in Figure \ref{sedelegcode}. 
 
-\begin{lstlisting}[language=Verilog]
-assign dCSR_medeleg = 32'b1 << exception_cause_code; // Set medeleg
-assign dCSR_sedeleg = 32'b1 << exception_cause_code; // Set sedeleg
-\end{lstlisting}
+\begin{figure}[h!]
+{\footnotesize
+\begin{center}
+\begin{tabular}{MM}
+\instbitrange{SXLEN-1}{16} &
+\instbitrange{15}{0} \\
+\hline
+\multicolumn{1}{|c|}{0} &
+\multicolumn{1}{c|}{Code 15 - Code 0} \\
+\hline
+SXLEN-16 & 16 \\
+\end{tabular}
+\end{center}
+}
+\vspace{-0.1in}
+\caption{Machine Exception Delegation Register {\tt sedeleg}.}
+\label{sedelegcode}
+\end{figure}
 
-Software initializes the U-mode trap handler by setting the {\tt{utvec}} CSR (see Figure \ref{utvecreg} in the Appendix). The {\tt{utvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. For both modes, the program counter is set to the base address in {\tt{utvec}}. This is the address where the U-mode trap handler is located.
+Software initializes the U-mode exception handler by setting the {\tt{utvec}} CSR (see Figure \ref{utvecreg} in the Appendix). The {\tt{utvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. For both modes, the program counter is set to the base address in {\tt{utvec}}. This is where the U-mode exception handler is located.
 
-Once the program jumps to the S-mode trap handler, the {\tt{uepc}}, {\tt{mstatus}}, {\tt{utval}}, and {\tt{ucause}} CSRs are set before the program exits the trap handler and resumes execution at the instruction that raised the exception. The {\tt{uepc}} CSR (see Figure \ref{uepcreg} in the Appendix) is written with the virtual address of the instruction that took the trap. This address is stored so that the program can be returned to and resumed after the trap handler is finished. The {\tt{mstatus}} CSR does not include a UPP field for U-mode since it is implicitly set to zero. However, {\tt{mstatus}} does include 1-bit SPIE and SIE fields where the SPIE field is set the the value in the SIE field before the SIE field is set to zero. These fields in {\tt{mstatus}} do not effect exception handling and are only changed so that trap handler does not process more than one interrupt at a time. The {\tt{utval}} CSR (see Figure \ref{utvalreg} in the Appendix) is written with exception-specific information. For EBREAKs, misaligned addresses, access faults, and page faults, {\tt{utval}} will contain the faulting virtual address. When page-based virtual memory is enabled, {\tt{utval}} is written with the faulting virtual address, even for physical-memory access exceptions. For illegal instructions, {\tt{utval}} contains the faulting instruction bits of the illegal instruction i.e the faulting instruction. The {\tt{ucause}} CSR (see Figure \ref{ucausereg} in the Appendix) is written with the exception cause code that corresponds to the exception that was raised. If an instruction raises multiple synchronous exceptions, the exceptions are taken by the trap handler and reported in {\tt{ucause}} according to a pre-defined priority structure. After these CSRs are set, the trap handler executes an URET instruction to jump back to the address stored in {\tt{uepc}} so that the program can resume. During this time, URET also sets UIE to the value in UPIE before setting UPIE to one to indicate that the trap handler is ready for the next interrupt.
-\end{section}
+On entry to the U-mode exception handler, the current execution environment is interrupted and software sets the {\tt{uepc}}, {\tt{mstatus}}, {\tt{ucause}}, and {\tt{utval}} CSRs before resuming execution at the instruction that raised the exception. The {\tt{uepc}} CSR (see Figure \ref{uepcreg} in the Appendix) is written with the value the program counter was set to for the instruction that took the exception. This value is stored so that the previous execution environment can be returned to and resumed once the exception handler is finished. In U-mode, software changes the UPIE and UIE fields (see Section 6.2 for more information) in the {\tt{mstatus}} CSR. The {\tt{mstatus}} CSR does not include a UPP field for U-mode since it is implicitly set to zero. {\tt{mstatus.UPIE}} is a 1-bit field that is written with the value the 1-bit, S-mode global interrupt-enable field {\tt{mstatus.UIE}} held when the exception was raised. Once {\tt{mstatus.UPIE}} is written with the value in {\tt{mstatus.UIE}}, the {\tt{mstatus.UIE}} field is set to zero so that the exception handler does not attempt to process an interrupt while the current trap is being handled. The {\tt{ucause}} CSR (see Figure \ref{ucausereg} in the Appendix) is written with the exception cause code that corresponds to the exception that was raised. If an instruction raises multiple synchronous exceptions, the exceptions are taken by the exception handler and reported in {\tt{ucause}} according to a pre-defined priority structure. The {\tt{utval}} CSR (see Figure \ref{utvalreg} in the Appendix) is written with exception-specific information. For misaligned addresses, access faults, and page faults, {\tt{utval}} will contain the faulting virtual address (see Section 4 for more information). Conversely, illegal instructions set {\tt{utval}} to the faulting instruction whereas EBREAKs and ECALLs set {\tt{utval}} to zero. If software intends to exit the U-mode exception handler and return to the location that raised the exception after these CSRs are set, it must first determine whether any register states were corrupted during the service routine and resolve these critical errors. Once this is done, software may execute a URET instruction which sets the program counter to the value stored in {\tt{uepc}} and resumes the previous execution environment. In addition to setting the program counter, URET also sets {\tt{mstatus.UIE}} to the value in {\tt{mstatus.UPIE}} before setting {\tt{mstatus.UPIE}} to one to indicate that the exception handler is ready for the next interrupt. 
+
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=2cm]
+\node (start1) [startstop] {Start};
+\node (dec1) [decision, below of=start1, yshift =-1cm] {Write {\tt{medeleg}}?};
+\node (pro1) [process, below of=dec1, xshift=3.5cm, yshift=-1cm] {Route to M-mode exception handler};
+\node (dec2) [decision, below of=dec1, xshift=-3.5cm, yshift=-3cm] {Write {\tt{sedeleg?}}};
+\node (pro2) [process, below of=dec2, xshift=5cm, yshift=-0.5cm] {Route to S-mode exception handler};
+\node (pro3) [process, below of=dec2, xshift=-5cm, yshift=-0.5cm] {Route to U-mode exception handler};
+
+\draw [arrow] (start1) -- (dec1);
+\draw [arrow] (dec1) -| node[anchor=south] {no} (pro1);
+\draw [arrow] (dec1) -| node[anchor=south] {yes} (dec2);
+\draw [arrow] (dec2) -| node[anchor=south] {no} (pro2);
+\draw [arrow] (dec2) -| node[anchor=south] {yes} (pro3);
+\end{tikzpicture}
+\caption{Flow Chart of Delegation Process}
+\label{delegation}
+\end{figure}
 
 \subsection{Exception Priority}
 If an instruction raises multiple synchronous exceptions, the decreasing priority order of Table \ref{exceptionpriorities} indicates which exception is taken. Synchronous exceptions are of lower priority than all interrupts and the priority of any custom synchronous exceptions is implementation-defined. 
 
-\begin{table}
+\begin{table}[h!]
 \centering
 \begin{tabular}{| l | l | l |}
 \hline
@@ -119,29 +167,9 @@ Priority & Exception Code & Description \\
 \emph{Lowest} & 5 & Load Access Fault \\ 
 \hline
 \end{tabular}
-\caption{Exception Priorities Priorities}
+\caption{Exception Fault Ordering}
 \label{exceptionpriorities}
 \end{table}
-
-\begin{figure}
-\centering
-\begin{tikzpicture}[node distance=2cm]
-\node (start1) [startstop] {Start};
-\node (dec1) [decision, below of=start1, yshift =-1cm] {Write {\tt{medeleg}}?};
-\node (pro1) [process, below of=dec1, xshift=3.5cm, yshift=-1cm] {Route to M-mode trap handler};
-\node (dec2) [decision, below of=dec1, xshift=-3.5cm, yshift=-3cm] {Write {\tt{sedeleg?}}};
-\node (pro2) [process, below of=dec2, xshift=5cm, yshift=-0.5cm] {Route to S-mode trap handler};
-\node (pro3) [process, below of=dec2, xshift=-5cm, yshift=-0.5cm] {Route to U-mode trap handler};
-
-\draw [arrow] (start1) -- (dec1);
-\draw [arrow] (dec1) -| node[anchor=south] {no} (pro1);
-\draw [arrow] (dec1) -| node[anchor=south] {yes} (dec2);
-\draw [arrow] (dec2) -| node[anchor=south] {no} (pro2);
-\draw [arrow] (dec2) -| node[anchor=south] {yes} (pro3);
-\end{tikzpicture}
-\caption{Flow Chart of Delegation Process}
-\label{delegation}
-\end{figure}
 
 \section{Exception Definitions}
 \subsection{Misaligned Addresses}
@@ -161,10 +189,10 @@ Illegal instructions are raised by illegal instruction encodings or problems rea
     \item Attempts to access CSRs from non-exsistent CSR addresses
     \item Attempts to access a CSR without appropriate privilege level permissions 
     \item Machine-mode access of debug-mode CSRs
-    \item Attempts to read or write the {\tt{satp}} CSR or execute the SFENCE.VMA instruction while executing in S-mode when the TVM bit in the {\tt{xstatus}} CSR equals one
-    \item Attempts to execute the WFI privilege instruction in any less-privileged mode, and it does not complete within an implementation-specific, bounded time limit\footnote[3]{The time limit may \underline{always} be zero, in which case WFI always causes an illegal instruction exception in less-privileged modes when TW equals one} when the TW bit in the {\tt{mstatus}} CSR equals one
-    \item Attempts to execute SRET while executing in S-mode when the TSR bit in the {\tt{xstatus}} register equals one
-    \item Any instruction that attempts to read or write when the corresponding XS[1:0] field in the {\tt{xstatus}} CSR is set to zero
+    \item Attempts to read or write the {\tt{satp}} CSR or execute the SFENCE.VMA instruction while executing in S-mode when the TVM bit in the {\tt{xstatus.TVM}} = 1
+    \item Attempts to execute the WFI privilege instruction in any less-privileged mode, and it does not complete within an implementation-specific, bounded time limit\footnote[3]{The time limit may \underline{always} be zero, in which case WFI always causes an illegal instruction exception in less-privileged modes when {\tt{mstatus.TW}} equals one} when {\tt{mstatus.TW}} = 1
+    \item Attempts to execute SRET while executing in S-mode when {\tt{xstatus.TSR}} = 1
+    \item Any instruction that attempts to read or write when {\tt{mstatus.XS[1:0]}} = 0
     \item Attempts to read to the counter registers that correspond to the IR, TM, and CY bits in the {\tt{mcounteren}} CSR when executing in a less-privileged mode 
 \end{itemize}
 
@@ -177,13 +205,13 @@ For RV32 systems, the supervisor has a 32-bit, page-based virtual memory system 
 The following lists a number of error that can raise a page fault exception that corresponds to the original access type (instruction, load, and store) during the Sv32 virtual to physical address translation process:
 \begin{itemize}
     \item The physical address of the page is insufficiently aligned
-    \item PTE bit V = 0, or PTE bit R = 0 and PTE bit W = 1
+    \item PTE.V = 0, or PTE.R = 0 and PTE.W = 1
     \item R, W, and X are zero when the page walk is on level two
-    \item Accessing a page in U-mode when the PTE bit U != 1
+    \item Accessing a page in U-mode when the PTE.U != 1
     \item Attempting to execute S-mode code on page where the PTE bit U = 1
-    \item Attempting to execute loads from pages where R = 0 and X = 0 for MXR = 1 in {\tt{mstatus}}
-    \item S-mode accesses of pages that are accessible in U-mode (U = 1) when the SUM field in {\tt{mstatus}} is cleared
-    \item PTE bit A = 0, or if the memory access is a store and PTE bit D = 0
+    \item Attempting to execute loads from pages where R = 0 and X = 0 for {\tt{mstatus.MXR}} = 1
+    \item S-mode accesses of pages that are accessible in U-mode (U = 1) when {\tt{mstatus.SUM}} = 0
+    \item PTE.A = 0, or if the memory access is a store and PTE.D = 0
 \end{itemize}
 
 \section{Exception Table}
@@ -278,27 +306,32 @@ EBREAK & \ding{53} & & & & & \ding{53} \\
 \label{exceptiontable}
 \end{table}
 
-\begin{figure}
+\section{Interrupt Handling}
+\subsection{PLIC, CLINT, and CLIC}
+Interrupt handling is similar to exception handling but there are some notable differences. Unlike exceptions, interrupts require additional hardware. This additional hardware includes a RISC-V Platform Level Interrupt Controller (PLIC)\cite{PLIC} and the option of a SiFive Core-local Interrupter (CLINT)\cite{CLINT} or a RISC-V Core-local Interrupt Controller (CLIC)\cite{CLIC}. The PLIC sources external interrupts from devices and routes them to the hart(s) as shown in Figure \ref{PLIC_CLINT}. Similarly, the CLINT sources local software and timer interrupts and routes them to the hart(s). Unlike the CLINT, the CLIC routes external, software, and timer interrupt signals to the hart(s) as shown in Figure \ref{PLIC_CLIC}. RISC-V has defined detailed CLIC and PLIC specifications that explain the interrupt control flow and define the different registers that are used to handle interrupts. For systems with multiple harts, the Wait for Interrupt (WFI) instruction can be implemented to control interrupt servicing between multiple harts by stalling a hart. If an enabled interrupt is present or later becomes present while the hart is stalled, the interrupt exception will be taken on the following instruction.
+
+\begin{figure}[h!]
     \centering
     \includegraphics[scale=0.8]{PLIC and CLINT Block Diagram.JPG}
     \caption{Block diagram of an example PLIC and CLINT configuration}
     \label{PLIC_CLINT}
-    \vspace{50pt}
+\end{figure}
+\begin{figure}[h!]
+    \centering
     \includegraphics[scale=0.8]{PLIC and CLIC Block Diagram.JPG}
     \caption{Block diagram of an example PLIC and CLIC configuration}
     \label{PLIC_CLIC}
 \end{figure}
 
-\section{Interrupt Handling}
-\subsection{PLIC, CLINT, and CLIC}
-Interrupt handling is similar to exception handling but there are some notable differences. Unlike exceptions, interrupts require additional hardware. This additional hardware includes a RISC-V Platform Level Interrupt Controller (PLIC)\cite{PLIC} and the option of a SiFive Core-local Interrupter (CLINT)\cite{CLINT} or a RISC-V Core-local Interrupt Controller (CLIC)\cite{CLIC}. The PLIC sources external interrupts from devices and routes them to the hart(s) as shown in Figure \ref{PLIC_CLINT}. Similarly, the CLINT sources local software and timer interrupts and routes them to the hart(s). Unlike the CLINT, the CLIC routes external, software, and timer interrupt signals to the hart(s) as shown in Figure \ref{PLIC_CLIC}. RISC-V has defined detailed CLIC and PLIC specifications that explain the interrupt control flow and define the different registers that are used to handle interrupts. For systems with multiple harts, the Wait for Interrupt (WFI) instruction can be implemented to control interrupt servicing between multiple harts by stalling a hart. If an enabled interrupt is present or later becomes present while the hart is stalled, the interrupt exception will be taken on the following instruction.
+\subsection{Interrupt Control Flow}
+Unlike exceptions, interrupts do not depend on synchronous hardware problems in the processor. Instead, interrupts are asynchronous events external to the processor that are driven devices, timers, or software. Before information about interrupts can be routed from the interrupt controllers to the processor, they must be globally and locally enabled. Global interrupt enables are controlled by the {\tt{mstatus.xie}} fields and the current privilege mode. M-mode interrupts are globally enabled if the current privilege mode is less than M or the current privilege mode is M and {\tt{mstatus.MIE}} = 1. S-mode interrupts are globally enabled if the current privilege mode is less the S or the current privilege mode is S and {\tt{mstatus.SIE}} = 1. U-mode interrupts are globally enabled if the current privilege mode is U and {\tt{mstatus.UIE}} = 1. Local interrupts are controlled by the {\tt{mie}} CSR (see Figure \ref{miereg} in the Appendix). External interrupts in M-mode, S-mode, and U-mode are enabled by raising the 1-bit {\tt{mie.MEIE}}, {\tt{mie.SEIE}}, and {\tt{mie.UEIE}} fields respectively. Timer interrupts in M-mode, S-mode, and U-mode are enabled by raising the 1-bit {\tt{mie.MTIE}}, {\tt{mie.STIE}}, and {\tt{mie.UTIE}} fields respectively. Software interrupts in M-mode, S-mode, and U-mode are enabled by raising the 1-bit {\tt{mie.MSIE}}, {\tt{mie.SSIE}}, and {\tt{mie.USIE}} fields respectively. 
+
+Once the selected interrupts are globally and locally enabled, the interrupt controllers are responsible for identifying pending interrupts and raising the appropriate fields in the {\tt{mip}} CSR (see Figure \ref{mipreg} in the Appendix). M-mode external, software, and timer interrupts are raised by setting the 1-bit {\tt{mip.MEIP}}, {\tt{mip.MSIP}}, and {\tt{mip.MTIP}} fields respectively. S-mode external, software, and timer interrupts are raised by setting the 1-bit {\tt{mip.SEIP}}, {\tt{mip.SSIP}}, and {\tt{mip.STIP}} fields respectively. U-mode external, software, and timer interrupts are raised by setting the 1-bit {\tt{mip.UEIP}}, {\tt{mip.USIP}}, and {\tt{mip.UTIP}} fields respectively. 
 
 \subsection{M-Mode Interrupts}
-If an interrupt occurs, control is relinquished by the program that is currently being executed and transferred to the trap handler. Before an interrupt can be raised and handled, the trap handler must be initialized and the interrupts must be enabled. By default, M-mode, S-mode, and U-mode interrupts are handled by the M-mode trap handler. Software initializes the M-mode trap handler by setting the {\tt{mtvec}} CSR. The {\tt{mtvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. In direct mode, the program counter is set to the base address in {\tt{mtvec}}. For vectored mode, the program counter is set to the base address plus four times the interrupt cause code as shown in Table \ref{interruptvectors}\footnote[4]{When vectored interrupts are enabled, interrupt cause 0, which corresponds to user-mode software interrupts, are vectored to the same location as synchronous exceptions. This ambiguity does not arise in practice, since user-mode software interrupts are either disabled or delegated to a less-privileged mode.}. In both cases, these are the address where the M-mode trap handler can be located. Interrupts are said to be enabled if they are enabled by the {\tt{mie}} (see Figure \ref{miereg} in the Appendix) and {\tt{mstatus}} CSRs. External interrupts in M-mode, S-mode, and U-mode are enabled by raising the 1-bit MEIE, SEIE, and UEIE fields in {\tt{mie}} respectively. Timer interrupts in M-mode, S-mode, and U-mode are enabled by raising the 1-bit MTIE, STIE, and UTIE fields in {\tt{mie}} respectively. Software interrupts in M-mode, S-mode, and U-mode are enabled by raising the 1-bit MSIE, SSIE, and USIE fields in {\tt{mie}} respectively. In addition to being enabled by raising bits in {\tt{mie}}, M-mode, S-mode, and U-mode interrupts can also be globally enabled. M-mode interrupts are globally enabled if the current privilege mode is less than M or the current privilege mode is M and the 1-bit MIE field in {\tt{mstatus}} is set. S-mode interrupts are globally enabled if the current privilege mode is less the S or the current privilege mode is S and the 1-bit SIE field in {\tt{mstatus}} is set. U-mode interrupts are globally enabled if the current privilege mode is U and the 1-bit UPP field in {\tt{mstatus}} is set.
+If M-mode, S-mode, or U-mode bits in {\tt{mip}} are raised, control is relinquished by the program that is currently being executed and transferred to an interrupt handler. By default, M-mode, S-mode, and U-mode interrupts are handled by the M-mode interrupt handler. Software initializes the M-mode interrupt handler by setting the {\tt{mtvec}} CSR. The {\tt{mtvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. In direct mode, the program counter is set to the base address in {\tt{mtvec}}. For vectored mode, the program counter is set to the base address plus four times the interrupt cause code as shown in Table \ref{interruptvectors}\footnote[4]{When vectored interrupts are enabled, interrupt cause 0, which corresponds to user-mode software interrupts, are vectored to the same location as synchronous exceptions. This ambiguity does not arise in practice, since user-mode software interrupts are either disabled or delegated to a less-privileged mode.}. This can be thought of as a jump table that contains different jump targets for interrupt-specific handling routines. Once the M-mode interrupt handler is initialized, interrupts are processed in the same manner as exceptions as specified in Section 3.1. The only difference is that interrupts do not set {\tt{mtval}} and it is therefore left cleared.
 
-The interrupt controllers are responsible for identifying pending interrupts that are received by the hart(s). M-mode external, software, and timer interrupts are raised by setting the 1-bit MEIP, MSIP, and MTIP fields in the {\tt{mip}} CSR (see Figure \ref{mipreg} in the Appendix) respectively. S-mode external, software, and timer interrupts are raised by setting the 1-bit SEIP, SSIP, and STIP fields in the {\tt{mip}} register respectively. U-mode external, software, and timer interrupts are raised by setting the 1-bit UEIP, USIP, and UTIP fields in the {\tt{mip}} register respectively. Raising an interrupt causes the M-mode trap handler to take control of the program. Interrupts processed by the M-mode trap handler are processed in the same manner as exceptions as specified in Section 3.1. The only difference is that interrupts do not set {\tt{mtval}} and it is therefore left cleared. 
-
-\begin{table}
+\begin{table}[h!]
 \centering
 \begin{tabular}{| l | l |}
 \hline
@@ -334,19 +367,15 @@ Machine External Interrupt & BASE + 0x2C \\
 \end{table}
 
 \subsection{S-Mode Interrupts}
-Interrupts raised in S-mode can be handled in M-mode or delegated to S-mode through the {\tt{mideleg}} CSR. Delegating to S-mode means that only S-mode CSRs are visible in hardware and interrupts are processed by the S-mode trap handler. The S-mode trap handler can process S-mode and U-mode interrupts. Software initializes the S-mode trap handler by setting the {\tt{stvec}} CSR. The {\tt{stvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. In direct mode, the program counter is set to the base address in {\tt{stvec}}. For vectored mode, the program counter is set to the base address plus four times the interrupt cause code. In both cases, these are the address where the S-mode trap handler can be located. Interrupts are said to be enabled if they are enabled by the {\tt{mie}}\footnote[5]{S-mode and U-mode can utilize {\tt{mie}} instead of {\tt{sie}} and {\tt{uie}}. These CSRs simply restrict the higher privilege level fields from being visible to hardware. This also holds true for {\tt{mie}} relative to {\tt{sie}} and {\tt{uie}}.} and {\tt{mstatus}} CSRs. External interrupts in S-mode and U-mode are enabled by raising the 1-bit SEIE and UEIE fields in {\tt{mie}} respectively. Timer interrupts in S-mode and U-mode are enabled by raising the 1-bit STIE and UTIE fields in {\tt{mie}} respectively. Software interrupts in S-mode and U-mode are enabled by raising the 1-bit SSIE and USIE fields in {\tt{mie}} respectively. In addition to being enabled by raising bits in {\tt{mie}}, S-mode and U-mode interrupts can also be globally enabled. S-mode interrupts are globally enabled if the current privilege mode is less the S or the current privilege mode is S and the 1-bit SIE field in {\tt{mstatus}} is set. U-mode interrupts are globally enabled if the current privilege mode is U and the 1-bit UPP field in {\tt{mstatus}} is set.
-
-The interrupt controllers are responsible for identifying pending interrupts that are received by the hart(s). S-mode external, software, and timer interrupts are raised by setting the 1-bit SEIP, SSIP, and STIP fields in the {\tt{mip}} CSR respectively. U-mode external, software, and timer interrupts are raised by setting the 1-bit UEIP, USIP, and UTIP fields in the {\tt{mip}} register respectively. Raising an interrupt causes the S-mode trap handler to take control of the program. Interrupts processed by the S-mode trap handler are processed in the same manner as exceptions as specified in Section 3.2. The only difference is that interrupts do not set {\tt{stval}} and it is therefore left cleared. 
+If M-mode, S-mode, or U-mode bits in {\tt{mip}} are raised, control is relinquished by the program that is currently being executed and transferred to an interrupt handler. Interrupts raised in S-mode can be handled in M-mode or delegated to S-mode through the {\tt{mideleg}} CSR. Delegating to S-mode means that only S-mode CSRs are visible in hardware and interrupts are processed by the S-mode interrupt handler. The S-mode interrupt handler can process S-mode and U-mode interrupts. Software initializes the S-mode interrupt handler by setting the {\tt{stvec}} CSR. The {\tt{stvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. In direct mode, the program counter is set to the base address in {\tt{stvec}}. For vectored mode, the program counter is set to the base address plus four times the interrupt cause code. This can be thought of as a jump table that contains different jump targets for interrupt-specific handling routines. Once the S-mode interrupt handler is initialized, interrupts processed by the S-mode interrupt handler are processed in the same manner as exceptions as specified in Section 3.2. The only difference is that interrupts do not set {\tt{stval}} and it is therefore left cleared. 
 
 \subsection{U-Mode Interrupts}
-Interrupts raised in U-mode can be handled in M-mode, delegated to S-mode through the {\tt{mideleg}} CSR, or delegated to U-mode through the \emph{sideleg} CSR. Delegating to U-mode means that only U-mode CSRs are visible in hardware and interrupts are processed by the U-mode trap handler. The U-mode trap handler can only process U-mode interrupts. Software initializes the U-mode trap handler by setting the {\tt{utvec}} CSR. The {\tt{utvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. In direct mode, the program counter is set to the base address in {\tt{utvec}}. For vectored mode, the program counter is set to the base address plus four times the interrupt cause code. In both cases, these are the address where the U-mode trap handler can be located. Interrupts are said to be enabled if they are enabled by the {\tt{mie}} and {\tt{mstatus}} CSRs. External interrupts U-mode are enabled by raising the 1-bit UEIE field in {\tt{mie}}. Timer interrupts in U-mode are enabled by raising the 1-bit UTIE field in {\tt{mie}}. Software interrupts in U-mode are enabled by raising the 1-bit USIE field in {\tt{mie}}. In addition to being enabled by raising bits in {\tt{mie}}, U-mode interrupts can also be globally enabled. U-mode interrupts are globally enabled if the current privilege mode is U and the 1-bit UPP field in {\tt{mstatus}} is set.
-
-The interrupt controllers are responsible for identifying pending interrupts that are received by the hart(s). U-mode external, software, and timer interrupts are raised by setting the 1-bit UEIP, USIP, and UTIP fields in the {\tt{mip}} CSR respectively. Raising an interrupt causes the U-mode trap handler to take control of the program. Interrupts processed by the U-mode trap handler are processed in the same manner as exceptions as specified in Section 3.3. The only difference is that interrupts do not set {\tt{utval}} and it is therefore left cleared.
+If M-mode, S-mode, or U-mode bits in {\tt{mip}} are raised, control is relinquished by the program that is currently being executed and transferred to an interrupt handler. Interrupts raised in U-mode can be handled in M-mode, delegated to S-mode through the {\tt{mideleg}} CSR, or delegated to U-mode through the \emph{sideleg} CSR. Delegating to U-mode means that only U-mode CSRs are visible in hardware and interrupts are processed by the U-mode interrupt handler. The U-mode interrupt handler can only process U-mode interrupts. Software initializes the U-mode interrupt handler by setting the {\tt{utvec}} CSR. The {\tt{utvec}} CSR contains a base address and a mode field. This mode field supports two options: direct and vectored. In direct mode, the program counter is set to the base address in {\tt{utvec}}. For vectored mode, the program counter is set to the base address plus four times the interrupt cause code. This can be thought of as a jump table that contains different jump targets for interrupt-specific handling routines. Once the M-mode interrupt handler is initialized, interrupts processed by the U-mode interrupt handler are processed in the same manner as exceptions as specified in Section 3.3. The only difference is that interrupts do not set {\tt{utval}} and it is therefore left cleared.
 
 \subsection{Interrupt Priority}
-Like exception, simultaneous interrupts are processed by the trap handler according to a fixed priority structure as show in Table \ref{interruptpriorities}. The exception codes for interrupts are differentiated from the exception codes for exceptions with a 1-bit interrupt field in the MSB of {\tt{xcause}}. Raising this field indicates that the exception code in {\tt{xcause}} is for an interrupt. 
+Like exceptions, simultaneous interrupts are processed by the interrupt handler according to a fixed priority structure as show in Table \ref{interruptpriorities}. The exception codes for interrupts are differentiated from the exception codes for exceptions with a 1-bit interrupt field in the MSB of {\tt{xcause}}. Raising this field indicates that the exception code in {\tt{xcause}} is for an interrupt. 
 
-\begin{table}
+\begin{table}[h!]
 \centering
 \begin{tabular}{| l | l | l |}
 \hline
@@ -386,8 +415,8 @@ Priority & Exception Code & Description \\
 \instbitrange{MXLEN-1}{2} &
 \instbitrange{1}{0} \\
 \hline
-\multicolumn{1}{|c|}{BASE[MXLEN-1:2] (\warl)} & 
-\multicolumn{1}{c|}{MODE (\warl)} \\
+\multicolumn{1}{|c|}{BASE[MXLEN-1:2]} & 
+\multicolumn{1}{c|}{MODE} \\
 \hline
 MXLEN-2 & 2 \\
 \end{tabular}
@@ -432,7 +461,7 @@ MXLEN \\
  \\
 \hline
 \multicolumn{1}{|c|}{SD} &
-\multicolumn{1}{c|}{\wpri} &
+\multicolumn{1}{c|}{\emph{Reserved}} &
 \multicolumn{1}{c|}{TSR} &
 \multicolumn{1}{c|}{TW} &
 \multicolumn{1}{c|}{TVM} &
@@ -464,14 +493,14 @@ MXLEN \\
 \multicolumn{1}{|c|}{XS[1:0]} &
 \multicolumn{1}{c|}{FS[1:0]} &
 \multicolumn{1}{c|}{MPP[1:0]} &
-\multicolumn{1}{c|}{\wpri} &
+\multicolumn{1}{c|}{\emph{Reserved}} &
 \multicolumn{1}{c|}{SPP} &
 \multicolumn{1}{c|}{MPIE} &
-\multicolumn{1}{c|}{\wpri} &
+\multicolumn{1}{c|}{\emph{Reserved}} &
 \multicolumn{1}{c|}{SPIE} &
 \multicolumn{1}{c|}{UPIE} &
 \multicolumn{1}{c|}{MIE} &
-\multicolumn{1}{c|}{\wpri} &
+\multicolumn{1}{c|}{\emph{Reserved}} &
 \multicolumn{1}{c|}{SIE} &
 \multicolumn{1}{c|}{UIE} \\
 \hline
@@ -509,7 +538,7 @@ MXLEN \\
 \instbitrange{MXLEN-2}{0} \\
 \hline
 \multicolumn{1}{|c|}{Interrupt} &
-\multicolumn{1}{c|}{Exception Code (\wlrl)} \\
+\multicolumn{1}{c|}{Exception Code} \\
 \hline
 1 & MXLEN-1 \\
 \end{tabular}
@@ -526,7 +555,7 @@ MXLEN \\
 \begin{tabular}{@{}U}
 \instbitrange{MXLEN-1}{0} \\
 \hline
-\multicolumn{1}{|c|}{Synchronous Exceptions (\warl)} \\
+\multicolumn{1}{|c|}{Synchronous Exceptions} \\
 \hline
 MXLEN \\
 \end{tabular}
@@ -544,8 +573,8 @@ MXLEN \\
 \instbitrange{SXLEN-1}{2} &
 \instbitrange{1}{0} \\
 \hline
-\multicolumn{1}{|c|}{BASE[SXLEN-1:2] (\warl)} & 
-\multicolumn{1}{c|}{MODE (\warl)} \\
+\multicolumn{1}{|c|}{BASE[SXLEN-1:2]} & 
+\multicolumn{1}{c|}{MODE} \\
 \hline
 SXLEN-2 & 2 \\
 \end{tabular}
@@ -598,7 +627,7 @@ SXLEN \\
 \instbitrange{SXLEN-2}{0} \\
 \hline
 \multicolumn{1}{|c|}{Interrupt} &
-\multicolumn{1}{c|}{Exception Code (\wlrl)} \\
+\multicolumn{1}{c|}{Exception Code} \\
 \hline
 1 & SXLEN-1 \\
 \end{tabular}
@@ -615,7 +644,7 @@ SXLEN \\
 \begin{tabular}{@{}U}
 \instbitrange{SXLEN-1}{0} \\
 \hline
-\multicolumn{1}{|c|}{Synchronous Exceptions (\warl)} \\
+\multicolumn{1}{|c|}{Synchronous Exceptions} \\
 \hline
 SXLEN \\
 \end{tabular}
@@ -633,8 +662,8 @@ SXLEN \\
 \instbitrange{UXLEN-1}{2} &
 \instbitrange{1}{0} \\
 \hline
-\multicolumn{1}{|c|}{BASE[UXLEN-1:2] (\warl)} & 
-\multicolumn{1}{c|}{MODE (\warl)} \\
+\multicolumn{1}{|c|}{BASE[UXLEN-1:2]} & 
+\multicolumn{1}{c|}{MODE} \\
 \hline
 UXLEN-2 & 2 \\
 \end{tabular}
@@ -687,7 +716,7 @@ UXLEN \\
 \instbitrange{UXLEN-2}{0} \\
 \hline
 \multicolumn{1}{|c|}{Interrupt} &
-\multicolumn{1}{c|}{Exception Code (\wlrl)} \\
+\multicolumn{1}{c|}{Exception Code} \\
 \hline
 1 & UXLEN-1 \\
 \end{tabular}
@@ -701,7 +730,7 @@ UXLEN \\
 \begin{figure}[h!]
 {\footnotesize
 \begin{center}
-\begin{tabular}{YSSYYY}
+\begin{tabular}{cWWccc}
 \instbit{7} &
 \instbitrange{6}{5} &
 \instbitrange{4}{3} &
@@ -709,12 +738,12 @@ UXLEN \\
 \instbit{1} &
 \instbit{0} \\
 \hline
-\multicolumn{1}{|c|}{L (\warl)} &
-\multicolumn{1}{c|}{0 (\warl)} &
-\multicolumn{1}{c|}{A (\warl)} &
-\multicolumn{1}{c|}{X (\warl)} &
-\multicolumn{1}{c|}{W (\warl)} &
-\multicolumn{1}{c|}{R (\warl)}
+\multicolumn{1}{|c|}{L} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{A} &
+\multicolumn{1}{c|}{X} &
+\multicolumn{1}{c|}{W} &
+\multicolumn{1}{c|}{R}
 \\
 \hline
 1 & 2 & 2 & 1 & 1 & 1 \\
@@ -726,39 +755,89 @@ UXLEN \\
 \label{pmpcfg}
 \end{figure}
 
-\begin{figure}[h!]
+\begin{figure*}[h!]
 {\footnotesize
 \begin{center}
-\begin{tabular}{@{}U}
-\instbitrange{MXLEN-1}{0} \\
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{Rcccccccccccc}
+\instbitrange{MXLEN-1}{12} &
+\instbit{11} &
+\instbit{10} &
+\instbit{9} &
+\instbit{8} &
+\instbit{7} &
+\instbit{6} &
+\instbit{5} &
+\instbit{4} &
+\instbit{3} &
+\instbit{2} &
+\instbit{1} &
+\instbit{0} \\
 \hline
-\multicolumn{1}{|c|}{Interrupts (\warl)} \\
+\multicolumn{1}{|c|}{0} &
+\multicolumn{1}{c|}{MEIE} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{SEIE} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{MTIE} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{STIE} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{MSIE} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{SSIE} &
+\multicolumn{1}{c|}{0} \\
 \hline
-MXLEN \\
+MXLEN-12 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 \\
 \end{tabular}
 \end{center}
 }
 \vspace{-0.1in}
-\caption{Machine Interrupt-Enable Register ({\tt mie}).}
+\caption{Machine Interrupt Enable Register {\tt mie}.}
 \label{miereg}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[h!]
+\begin{figure*}[h!]
 {\footnotesize
 \begin{center}
-\begin{tabular}{@{}U}
-\instbitrange{MXLEN-1}{0} \\
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{Rcccccccccccc}
+\instbitrange{MXLEN-1}{12} &
+\instbit{11} &
+\instbit{10} &
+\instbit{9} &
+\instbit{8} &
+\instbit{7} &
+\instbit{6} &
+\instbit{5} &
+\instbit{4} &
+\instbit{3} &
+\instbit{2} &
+\instbit{1} &
+\instbit{0} \\
 \hline
-\multicolumn{1}{|c|}{Interrupts (\warl)} \\
+\multicolumn{1}{|c|}{0} &
+\multicolumn{1}{c|}{MEIP} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{SEIP} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{MTIP} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{STIP} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{MSIP} &
+\multicolumn{1}{c|}{0} &
+\multicolumn{1}{c|}{SSIP} &
+\multicolumn{1}{c|}{0} \\
 \hline
-MXLEN \\
+MXLEN-12 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 \\
 \end{tabular}
 \end{center}
 }
 \vspace{-0.1in}
-\caption{Machine Interrupt-Pending Register ({\tt mip}).}
+\caption{Machine Interrupt Pending Register {\tt mip}.}
 \label{mipreg}
-\end{figure}
+\end{figure*}
 
 \begin{figure}[h!]
 {\footnotesize
@@ -766,7 +845,7 @@ MXLEN \\
 \begin{tabular}{@{}U}
 \instbitrange{MXLEN-1}{0} \\
 \hline
-\multicolumn{1}{|c|}{Interrupts (\warl)} \\
+\multicolumn{1}{|c|}{Interrupts} \\
 \hline
 MXLEN \\
 \end{tabular}
@@ -783,7 +862,7 @@ MXLEN \\
 \begin{tabular}{@{}U}
 \instbitrange{SXLEN-1}{0} \\
 \hline
-\multicolumn{1}{|c|}{Interrupts (\warl)} \\
+\multicolumn{1}{|c|}{Interrupts} \\
 \hline
 SXLEN \\
 \end{tabular}
