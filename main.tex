@@ -214,6 +214,7 @@ For RV32 systems, the supervisor has a 32-bit, page-based virtual memory system 
 The following lists a number of error that can raise a page fault exception that corresponds to the original access type (instruction, load, and store) during the Sv32 virtual to physical address translation process:
 \begin{itemize}
     \item The physical address of the page is insufficiently aligned
+    \item PTE[21:12] != 0 when a leaf node at the first level of the table is encountered.
     \item PTE.V = 0, or PTE.R = 0 and PTE.W = 1
     \item R, W, and X are zero when the page walk is on level two
     \item Accessing a page in U-mode when the PTE.U != 1
