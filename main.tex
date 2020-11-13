@@ -42,7 +42,7 @@
 
 \title{RISC-V Exceptions and Interrupts}
 \author{Sean Keller}
-\date{October 2020}
+\date{November 2020}
 
 \begin{document}
 
@@ -61,7 +61,7 @@ If an exception occurs, control is relinquished by the instruction that is curre
 
 On entry to the M-mode exception handler, hardware initializes the {\tt{mepc}}, {\tt{mtval}}, {\tt{mcause}}, and {\tt{mstatus}} CSRs. The {\tt{mepc}} CSR (see Figure \ref{mepcreg} in the Appendix) is written with the value the program counter was set to for the instruction that took the exception. This value is stored so that the previous execution environment can be returned to and resumed once the exception handler is finished. The {\tt{mcause}} CSR (see Figure \ref{mcausereg} in the Appendix) is written with the exception cause code (see Table \ref{exceptionpriorities}) that corresponds to the exception that was raised. If an instruction raises multiple synchronous exceptions, the exceptions are taken by the exception handler and reported in {\tt{mcause}} according to a pre-defined order. The {\tt{mtval}} CSR (see Figure \ref{mtvalreg} in the Appendix) is written with exception-specific information. For misaligned addresses, access faults, and page faults, {\tt{mtval}} will contain the faulting virtual address (see Section 4 for more information). Illegal instructions set {\tt{mtval}} to the faulting instruction whereas EBREAKs and ECALLs set {\tt{mtval}} to zero. 
 
-In M-mode, software changes the MPP, MIE and MPIE fields (see Section 6.2 for more information) in the {\tt{mstatus}} CSR (see Figure \ref{mstatusreg-rv32} in the Appendix). The 2-bit {\tt{mstatus.MPP}} field is written with the privilege level encoding that corresponds to the privilege level the program was in when the exception was raised. This field can hold three values: 11 (M-mode), 01 (S-mode), and 00 (U-mode). The 1-bit {\tt{mstatus.MIE}} field indicates whether M-mode global interrupts are enabled or disabled. On entry into the trap handler, the {\tt{mstatus.MIE}} field is set to zero,
+In M-mode, hardware changes the MPP, MIE and MPIE fields (see Section 6.2 for more information) in the {\tt{mstatus}} CSR (see Figure \ref{mstatusreg-rv32} in the Appendix). The 2-bit {\tt{mstatus.MPP}} field is written with the privilege level encoding that corresponds to the privilege level the program was in when the exception was raised. This field can hold three values: 11 (M-mode), 01 (S-mode), and 00 (U-mode). The 1-bit {\tt{mstatus.MIE}} field indicates whether M-mode global interrupts are enabled or disabled. On entry into the trap handler, the {\tt{mstatus.MIE}} field is set to zero,
 indicating that interrupts are disabled. This prevents the trap handler from attempting to process an interrupt while the current trap is being handled. The 1-bit {\tt{mstatus.MPIE}} field is written with the value {\tt{mstatus.MIE}} held before the exception was raised, indicating whether interrupts were enabled prior to the exception.
 
 After these CSRs are set, software may execute a MRET instruction which sets the program counter to the value stored in {\tt{mepc}} and resumes the previous execution environment. In addition to setting the program counter, MRET also restores the original value of {\tt{mstatus.MIE}} by setting it to the value in {\tt{mstatus.MPIE}} before setting {\tt{mstatus.MPIE}} to one to indicate that the exception handler is ready for the next interrupt. Finally, MRET also restores the previous privilege mode.
@@ -90,7 +90,7 @@ MXLEN-16 & 16 \\
 
 On entry to the S-mode exception handler, hardware initializes the {\tt{sepc}}, {\tt{scause}}, {\tt{stval}}, and {\tt{mstatus}} CSRs (see Figure \ref{sepcreg}, \ref{scausereg}, and \ref{stvalreg}) which are analogous to {\tt{mepc}}, {\tt{mtval}}, and {\tt{mcause}}. S-mode can utilize {\tt{mstatus}} instead of {\tt{sstatus}}. This CSR simply restricts the M-mode fields from being visible to hardware. Attempts to read or write to {\tt{mepc}}, {\tt{mtval}}, {\tt{mcause}}, or the M-mode fields in {\tt{mstatus}} will raise an illegal instruction exception (see Section 4.3 for more information).
 
-In S-mode, software changes the SPP, SIE and SPIE fields (see Section 6.2 for more information) in the {\tt{mstatus}} CSR. The 1-bit {\tt{mstatus.SPP}} field is written with the privilege level encoding that corresponds to the privilege level the execution environment was in when the exception was raised. This field can hold two values: 1 (S-mode) and 0 (U-mode). The 1-bit {\tt{mstatus.SIE}} field indicates whether S-mode global interrupts are enabled or disabled. On entry into the trap handler, the {\tt{mstatus.SIE}} field is set to zero, indicating that interrupts are disabled. This prevents the trap handler from attempting to process an interrupt while the current trap is being handled. The 1-bit {\tt{mstatus.SPIE}} field is written with the value {\tt{mstatus.SIE}} held before the exception was raised, indicating whether interrupts were enabled prior to the exception.
+In S-mode, hardware changes the SPP, SIE and SPIE fields (see Section 6.2 for more information) in the {\tt{mstatus}} CSR. The 1-bit {\tt{mstatus.SPP}} field is written with the privilege level encoding that corresponds to the privilege level the execution environment was in when the exception was raised. This field can hold two values: 1 (S-mode) and 0 (U-mode). The 1-bit {\tt{mstatus.SIE}} field indicates whether S-mode global interrupts are enabled or disabled. On entry into the trap handler, the {\tt{mstatus.SIE}} field is set to zero, indicating that interrupts are disabled. This prevents the trap handler from attempting to process an interrupt while the current trap is being handled. The 1-bit {\tt{mstatus.SPIE}} field is written with the value {\tt{mstatus.SIE}} held before the exception was raised, indicating whether interrupts were enabled prior to the exception.
 
 After these CSRs are set, software may execute a SRET instruction which sets the program counter to the value stored in {\tt{sepc}} and resumes the previous execution environment. In addition to setting the program counter, SRET also restores the original value of {\tt{mstatus.SIE}} by setting it to the value in {\tt{mstatus.SPIE}} before setting {\tt{mstatus.SPIE}} to one to indicate that the exception handler is ready for the next interrupt.
  
@@ -118,7 +118,7 @@ SXLEN-16 & 16 \\
 
 On entry to the U-mode exception handler, hardware initializes the {\tt{uepc}}, {\tt{ucause}}, {\tt{utval}}, and {\tt{mstatus}} CSRs (see Figure \ref{uepcreg}, \ref{ucausereg}, and \ref{utvalreg}) which are analogous to {\tt{mepc}}, {\tt{mtval}}, and {\tt{mcause}}. U-mode can utilize {\tt{mstatus}} instead of {\tt{ustatus}}. This CSR simply restricts the M-mode and S-mode fields from being visible to hardware. Attempts to read or write to the higher privilege CSRs {\tt{xepc}}, {\tt{xtval}}, {\tt{xcause}}, or the higher privilege fields in {\tt{mstatus}} will raise an illegal instruction exception (see Section 4.3 for more information).
 
-In U-mode, software changes the UIE and UPIE fields (see Section 6.2 for more information) in the {\tt{mstatus}} CSR. A {\tt{mstatus.UPP}} field is not included since it is implicitly set to zero. The 1-bit {\tt{mstatus.UIE}} field indicates whether U-mode global interrupts are enabled or disabled. On entry into the trap handler, the {\tt{mstatus.UIE}} field is set to zero, indicating that interrupts are disabled. This prevents the trap handler from attempting to process an interrupt while the current trap is being handled. The 1-bit {\tt{mstatus.UPIE}} field is written with the value {\tt{mstatus.UIE}} held before the exception was raised, indicating whether interrupts were enabled prior to the exception.
+In U-mode, hardware changes the UIE and UPIE fields (see Section 6.2 for more information) in the {\tt{mstatus}} CSR. A {\tt{mstatus.UPP}} field is not included since it is implicitly set to zero. The 1-bit {\tt{mstatus.UIE}} field indicates whether U-mode global interrupts are enabled or disabled. On entry into the trap handler, the {\tt{mstatus.UIE}} field is set to zero, indicating that interrupts are disabled. This prevents the trap handler from attempting to process an interrupt while the current trap is being handled. The 1-bit {\tt{mstatus.UPIE}} field is written with the value {\tt{mstatus.UIE}} held before the exception was raised, indicating whether interrupts were enabled prior to the exception.
 
 After these CSRs are set, software may execute a URET instruction which sets the program counter to the value stored in {\tt{uepc}} and resumes the previous execution environment. In addition to setting the program counter, URET also restore the original value of {\tt{mstatus.UIE}} by setting it to the value in {\tt{mstatus.UPIE}} before setting {\tt{mstatus.UPIE}} to one to indicate that the exception handler is ready for the next interrupt. Finally, URET also restores the previous privilege mode.
 
@@ -214,7 +214,7 @@ For RV32 systems, the supervisor has a 32-bit, page-based virtual memory system 
 The following lists a number of error that can raise a page fault exception that corresponds to the original access type (instruction, load, and store) during the Sv32 virtual to physical address translation process:
 \begin{itemize}
     \item The physical address of the page is insufficiently aligned
-    \item PTE[21:12] != 0 when a leaf node at the first level of the table is encountered.
+    \item PTE[21:12] != 0 when a leaf node at the first level of the table is encountered
     \item PTE.V = 0, or PTE.R = 0 and PTE.W = 1
     \item R, W, and X are zero when the page walk is on level two
     \item Accessing a page in U-mode when the PTE.U != 1
@@ -316,20 +316,22 @@ EBREAK & \ding{53} & & & & & \ding{53} \\
 \label{exceptiontable}
 \end{table}
 
+\clearpage
+
 \section{Interrupt Handling}
 \subsection{PLIC, CLINT, and CLIC}
-Interrupt handling is similar to exception handling but there are some notable differences. Unlike exceptions, interrupts require additional hardware. This additional hardware includes a RISC-V Platform Level Interrupt Controller (PLIC)\cite{PLIC} and the option of a SiFive Core-local Interrupter (CLINT)\cite{CLINT} or a RISC-V Core-local Interrupt Controller (CLIC)\cite{CLIC}. The PLIC sources external interrupts from devices and routes them to the hart(s) as shown in Figure \ref{PLIC_CLINT}. Similarly, the CLINT sources local software and timer interrupts and routes them to the hart(s). Unlike the CLINT, the CLIC routes external, software, and timer interrupt signals to the hart(s) as shown in Figure \ref{PLIC_CLIC}. RISC-V has defined detailed CLIC and PLIC specifications that explain the interrupt control flow and define the different registers that are used to handle interrupts. For systems with multiple harts, the Wait for Interrupt (WFI) instruction can be implemented to control interrupt servicing between multiple harts by stalling a hart. If an enabled interrupt is present or later becomes present while the hart is stalled, the interrupt exception will be taken on the following instruction.
+Interrupt handling is similar to exception handling but there are some notable differences. Unlike exceptions, interrupts require additional hardware. This additional hardware includes a RISC-V Platform Level Interrupt Controller (PLIC)\cite{PLIC} and the option of a SiFive Core-local Interrupter (CLINT)\cite{CLINT} or a RISC-V Core-local Interrupt Controller (CLIC)\cite{CLIC}. The PLIC sources external interrupts from devices and routes them to the hart(s) as shown in Figure \ref{PLIC_CLINT}. Similarly, the CLINT sources local software and timer interrupts and routes them to the hart(s). Unlike the CLINT, the CLIC routes external, software, and timer interrupt signals to the hart(s) as shown in Figure \ref{PLIC_CLIC}. Although each of these three interrupt controllers are external to the processor and therefore have no information about the privilege mode, they each support pseudo privilege modes to prioritize the different interrupts. These pseudo privilege modes have the same M, S, and U mnemonics as the three privilege modes. The pseudo privilege modes in these interrupt controllers map to fields in the {\tt{mip}} CSR (see Section 6.2). RISC-V has defined detailed CLIC and PLIC specifications that explain the interrupt control flow and define the different registers that are used to handle interrupts. For systems with multiple harts, the Wait for Interrupt (WFI) instruction can be implemented to control interrupt servicing between multiple harts by stalling a hart. If an enabled interrupt is present or later becomes present while the hart is stalled, the interrupt exception will be taken on the following instruction.
 
 \begin{figure}[h!]
     \centering
     \includegraphics[scale=0.7]{PLIC and CLINT Block Diagram.JPG}
-    \caption{Block diagram of an example PLIC and CLINT configuration}
+    \caption{Block diagram of an example PLIC and CLINT configuration \cite{CLINT}}
     \label{PLIC_CLINT}
 \end{figure}
 \begin{figure}[h!]
     \centering
     \includegraphics[scale=0.7]{PLIC and CLIC Block Diagram.JPG}
-    \caption{Block diagram of an example PLIC and CLIC configuration}
+    \caption{Block diagram of an example PLIC and CLIC configuration \cite{CLINT}}
     \label{PLIC_CLIC}
 \end{figure}
 
